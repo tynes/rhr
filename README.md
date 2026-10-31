@@ -17,8 +17,8 @@ over time against the things you do (caffeine, alcohol, sleep, exercise, stressâ
 
 | Area | State |
 |---|---|
-| Core logic (BLE packet parsing, recording, gap detection, resting-HR math, trends, correlations, CSV/JSON export, WHOOP CSV import) | Implemented, **76 automated tests passing** (Linux; CI also runs them on macOS) |
-| iOS app (SwiftUI, CoreBluetooth, Swift Charts, GRDB) | Implemented. CI builds it for simulator and device on a macOS runner (see `.github/workflows/ci.yml`) |
+| Core logic (BLE packet parsing, recording, gap detection, resting-HR math, trends, correlations, CSV/JSON export, WHOOP CSV import) | Implemented, **76 automated tests passing** on Linux (Swift 6.0.3) |
+| iOS app (SwiftUI, CoreBluetooth, Swift Charts, GRDB) | Implemented and code-reviewed, but **not yet compiled by Xcode**: it was written on Linux, and the macOS CI job (`.github/workflows/ci.yml`) couldn't run because GitHub Actions didn't start any runners for this repository. Expect to possibly fix small compile errors on first build |
 | **Real WHOOP MG hardware** | **Not yet tested.** See [docs/HARDWARE_TESTING.md](docs/HARDWARE_TESTING.md) for the checklist to run on your phone |
 
 What the hardware claim rests on: the NOOP project documents that WHOOP 5.0/MG straps expose the standard
