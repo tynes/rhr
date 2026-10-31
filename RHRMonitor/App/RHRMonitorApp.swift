@@ -4,6 +4,7 @@ import UIKit
 /// The app delegate owns the long-lived model so it exists from the moment iOS launches the
 /// process — including background relaunches for Bluetooth state restoration, where no UI is
 /// created. Nothing that collects or stores data lives in a SwiftUI view.
+@MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
     let model = AppModel()
     let keepAwake = KeepAwakeController()
