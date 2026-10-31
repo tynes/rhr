@@ -25,7 +25,10 @@ struct HeartRateChart: View {
             low = mid - 10
             high = mid + 10
         }
-        return max(20, low)...min(240, high)
+        // Clamp so the range stays valid even for extreme values.
+        let l = max(20, min(low, 230))
+        let h = min(240, max(high, l + 10))
+        return l...h
     }
 
     private var isolatedSegments: Set<Int> {

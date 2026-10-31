@@ -178,7 +178,7 @@ struct TrendsView: View {
             }
         }
         .chartXScale(domain: startDate...endDate)
-        .chartYScale(domain: max(20, lo)...max(hi, lo + 10))
+        .chartYScale(domain: max(20, lo)...max(hi, max(20, lo) + 10))
         .chartXSelection(value: $selectedDate)
         .overlay {
             if visible.isEmpty {
