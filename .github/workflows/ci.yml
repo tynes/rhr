@@ -6,6 +6,16 @@ on:
   workflow_dispatch:
 
 jobs:
+  linux-tests:
+    name: Swift package tests (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version
+      - name: Test RHRCore
+        run: ./scripts/test-linux.sh
+
   package-tests:
     name: Swift package tests (macOS)
     runs-on: macos-15
