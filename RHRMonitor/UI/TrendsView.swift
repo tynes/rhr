@@ -32,6 +32,7 @@ enum PostureFilter: String, CaseIterable, Identifiable {
 /// Screen C — long-term resting heart rate trends, annotations and insights.
 struct TrendsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppLock.self) private var appLock
 
     @State private var range: TrendRange = .month
     @State private var postureFilter: PostureFilter = .all
@@ -101,6 +102,8 @@ struct TrendsView: View {
             }
             .navigationTitle("Trends")
             .task(id: model.dataVersion) { reload() }
+            // The privacy cover can't sit above sheets and dialogs, so close them when the app locks.
+            .onChange(of: appLock.isLocked) { _, locked in if locked { showEditor = false } }
             .sheet(isPresented: $showEditor) {
                 AnnotationEditorView(initialKind: editorKind) { new in
                     for a in new { try? model.database.saveAnnotation(a) }

@@ -346,11 +346,15 @@ extension HeartRateBLEManager: CBCentralManagerDelegate {
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let services = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
         // Advertised names are set by whoever is broadcasting: clean them before use.
-        let name = DeviceName.sanitize((advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name) ?? ""
+        let name = DeviceName.sanitize(advertisementData[CBAdvertisementDataLocalNameKey] as? String)
+            ?? DeviceName.sanitize(peripheral.name) ?? ""
         let hr = services.contains(Self.heartRateService)
         let whoop = name.uppercased().contains("WHOOP") || services.contains(where: { Self.whoopServices.contains($0) })
         guard hr || whoop else { return }
-        guard discovered.count < Self.maxDiscovered || discovered.contains(where: { $0.id == peripheral.identifier }) else { return }
+        // When the list is full, still admit the saved device and WHOOP straps, so a flood of fake
+        // heart rate advertisers can't push the real strap off the list.
+        guard discovered.count < Self.maxDiscovered || whoop || peripheral.identifier == deviceID
+                || discovered.contains(where: { $0.id == peripheral.identifier }) else { return }
         knownPeripherals[peripheral.identifier] = peripheral
         let rssi = RSSI.intValue == 127 ? nil : RSSI.intValue
         upsert(DiscoveredDevice(id: peripheral.identifier, name: name.isEmpty ? "Heart rate sensor" : name, rssi: rssi,

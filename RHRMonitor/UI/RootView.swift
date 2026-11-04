@@ -58,6 +58,8 @@ struct RootView: View {
             default: break
             }
         }
+        // Content under the cover must not be reachable with VoiceOver either.
+        .accessibilityHidden(appLock.isLocked || scenePhase != .active)
         .overlay {
             // Hides heart rate data from the app switcher snapshot, and from view while locked.
             if appLock.isLocked || scenePhase != .active {

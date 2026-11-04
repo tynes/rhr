@@ -66,7 +66,12 @@ enum ExportService {
         return ShareItem(urls: [url])
     }
 
-    /// Deletes every export file. Called when the share sheet closes and at launch.
+    /// Deletes one export's files. Called when its share sheet closes.
+    static func remove(_ item: ShareItem) {
+        for url in item.urls { try? FileManager.default.removeItem(at: url) }
+    }
+
+    /// Deletes every export file. Called at launch and by "Delete all data".
     static func cleanUp() {
         try? FileManager.default.removeItem(at: folder)
     }

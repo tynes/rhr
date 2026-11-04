@@ -38,10 +38,10 @@ Out of scope: a jailbroken or already-compromised phone, and the WHOOP strap's o
 | 1 | High | **"Delete all data" left deleted rows readable on disk.** Notes and readings stayed in the SQLite write-ahead log (`rhr.sqlite-wal`) after vacuum. Verified with a test that searches the raw files. | `PRAGMA secure_delete = ON` for every connection, and the WAL is truncated after the vacuum. Test: `testDeleteAllLeavesNoTraceOnDisk`. |
 | 2 | Medium | **CSV formula injection.** Exports wrote notes and Bluetooth device names as-is. A value like `=HYPERLINK(...)` (which any nearby device can advertise as its name) would run as a formula when the CSV is opened in Excel, Numbers or Google Sheets. | Free-text columns starting with `= + - @`, tab or CR get a leading `'` (`CSVExporter.text`). Documented in `DATA_FORMAT.md`. |
 | 3 | Medium | **Import accepted absurd values.** `inf` and 9999 BPM were stored. A date like `0001-01-01` made the "All time" trend loop over ~740,000 days on every redraw, freezing the app. | Import requires finite BPM in 25–250 and dates from 2000-01-01 to one day after the import. Files over 10 MB are refused before being read. |
-| 4 | Medium | **Exported health data piled up** in the app's temporary folder; it was only removed by "Delete all data". | Exports are deleted when the share sheet closes and at every launch. |
-| 5 | Medium | **No protection on screen.** Heart rate was visible in the app switcher, and anyone holding the unlocked phone could open the app. | A privacy cover hides content whenever the app isn't active. Optional **Face ID / Touch ID / passcode lock** (Settings › Privacy). Turning the lock off requires authenticating. Collection keeps running while locked. |
+| 4 | Medium | **Exported health data piled up** in the app's temporary folder; it was only removed by "Delete all data". | Each export's file is deleted when its share sheet closes, and the folder is cleared at every launch. |
+| 5 | Medium | **No protection on screen.** Heart rate was visible in the app switcher, and anyone holding the unlocked phone could open the app. | A privacy cover hides content whenever the app isn't active. Optional **Face ID / Touch ID / passcode lock** (Settings › Privacy). Turning the lock off requires authenticating. Collection keeps running while locked. When the lock engages, open share sheets and confirmation dialogs are closed, since they would otherwise sit above the lock screen. That gap was caught in review: an open "Everything (JSON)" share sheet could have been used without unlocking. Covered content is also hidden from VoiceOver. |
 | 6 | Low | **Untrusted Bluetooth names** were shown and stored unfiltered (newlines, right-to-left override characters that make text read backwards, unlimited length). | `DeviceName.sanitize` strips control and invisible formatting characters and caps names at 64 characters. |
-| 7 | Low | **Unbounded scan list.** A device spamming fake advertisements could grow the device list without limit. | The list is capped at 50 devices and reset on each scan. |
+| 7 | Low | **Unbounded scan list.** A device spamming fake advertisements could grow the device list without limit. | The list is capped at 50 devices and reset on each scan. The saved device and WHOOP straps are always admitted, so a flood can't push the real strap off the list. |
 | 8 | Low | **State restoration adopted any peripheral.** After a background relaunch it fell back to the first restored device even if it wasn't the saved one, e.g. one you had told it to forget. | Only the saved device is restored. |
 | 9 | Low | **Floating dependency.** GRDB was `from: "7.0.0"` and the lockfile was gitignored, so each machine could resolve a different version. It actually did: Swift 6.0 picks 7.8.0, newer Xcode picks 7.12.0, released 3 days before this review. | Pinned to exactly 7.8.0. `Package.resolved` is committed with the commit hash, for both SwiftPM and Xcode. |
 | 10 | Low | **CI token and actions.** Workflows ran with default token permissions, `actions/checkout` was referenced by a movable tag, and git credentials were persisted. | `permissions: contents: read`, checkout pinned to a commit SHA, `persist-credentials: false`, job timeouts. The SQLite download is verified as a whole zip before extraction. |
@@ -54,8 +54,13 @@ Out of scope: a jailbroken or already-compromised phone, and the WHOOP strap's o
   started). The core package builds and its 82 tests pass, but the app code, including this review's changes,
   may need small compile fixes on first build. This is the biggest risk, and it's a reliability risk more
   than a security one.
-- The privacy cover sits under sheets presented on top of the main screen (share sheet, annotation editor).
-  Those show no heart rate data.
+- The privacy cover sits under sheets and dialogs. They are closed when the app locks, but with the lock
+  off, a sheet left open (e.g. the share sheet) can still appear in the app-switcher snapshot. A separate
+  top-level `UIWindow` for the cover would close this fully.
+- The cover also appears while a system alert or Control Center makes the app inactive. This is deliberate:
+  it errs on the side of privacy.
+- If you remove your iPhone passcode while the lock is on, you can't unlock the app until you set one again.
+  Deleting the app also works, but it erases the data.
 - Data is included in your iPhone backups, like any app data. iCloud backups are encrypted; with Advanced
   Data Protection, end-to-end.
 - Any device can claim to be a heart rate sensor. A spoofed device can only feed you fake readings after you

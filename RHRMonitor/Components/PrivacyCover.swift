@@ -3,8 +3,9 @@ import SwiftUI
 /// Covers the app's content when it isn't in the foreground (so heart rate data doesn't appear in
 /// the app switcher) and while the optional app lock is engaged.
 ///
-/// Limitation: sheets presented above the main screen (share sheet, annotation editor) sit on top
-/// of this cover. They show no heart rate data.
+/// Sheets and dialogs are presented above this cover, so each screen closes its own when the app
+/// locks (see the `appLock.isLocked` handlers). In the app-switcher snapshot of an unlocked app, an
+/// open sheet can still appear on top.
 struct PrivacyCover: View {
     let locked: Bool
     let isAuthenticating: Bool
@@ -35,5 +36,6 @@ struct PrivacyCover: View {
             .padding(32)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
     }
 }

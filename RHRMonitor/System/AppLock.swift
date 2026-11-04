@@ -34,7 +34,7 @@ final class AppLock {
     }
 
     /// "Face ID", "Touch ID", "Optic ID" or "passcode" (the lock needs a device passcode either way).
-    nonisolated static var methodName: String {
+    nonisolated static let methodName: String = {
         let context = LAContext()
         _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
         switch context.biometryType {
@@ -43,7 +43,7 @@ final class AppLock {
         case .opticID: return "Optic ID"
         default: return "passcode"
         }
-    }
+    }()
 
     /// Call when the app goes to the background.
     func lockIfEnabled() {
@@ -79,8 +79,8 @@ final class AppLock {
 
     private func authenticate(reason: String) async -> Bool {
         let context = LAContext()
-        var error: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+        lastError = nil
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else {
             lastError = "Set a passcode for this iPhone (Settings › Face ID & Passcode) to use the app lock."
             return false
         }

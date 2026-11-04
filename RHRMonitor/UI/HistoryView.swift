@@ -88,6 +88,7 @@ struct StatusBadge: View {
 struct SessionDetailView: View {
     let sessionID: String
     @Environment(AppModel.self) private var model
+    @Environment(AppLock.self) private var appLock
     @Environment(\.dismiss) private var dismiss
 
     @State private var session: RecordingSession?
@@ -113,7 +114,12 @@ struct SessionDetailView: View {
         .navigationTitle(session.map { Format.dateTime.string(from: $0.startedAt) } ?? "Session")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: model.dataVersion) { await load() }
-        .sheet(item: $share, onDismiss: ExportService.cleanUp) { item in ShareSheet(items: item.urls) }
+        // The privacy cover can't sit above sheets and dialogs, so close them when the app locks.
+        .onChange(of: appLock.isLocked) { _, locked in if locked { share = nil; confirmDelete = false } }
+        .sheet(item: $share) { item in
+            // Delete only this export's file, so another export being prepared isn't removed.
+            ShareSheet(items: item.urls).onDisappear { ExportService.remove(item) }
+        }
         .confirmationDialog("Delete this session and its samples?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 try? model.database.deleteSession(id: sessionID)

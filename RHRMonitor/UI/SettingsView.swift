@@ -86,7 +86,14 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .task(id: model.dataVersion) { counts = try? model.database.counts() }
-            .sheet(item: $share, onDismiss: ExportService.cleanUp) { item in ShareSheet(items: item.urls) }
+            // The privacy cover can't sit above sheets and dialogs, so close them when the app locks.
+            .onChange(of: appLock.isLocked) { _, locked in
+                if locked { share = nil; showImporter = false; confirmDeleteAll = false; confirmDeleteImported = false }
+            }
+            .sheet(item: $share) { item in
+                // Delete only this export's file, so another export being prepared isn't removed.
+                ShareSheet(items: item.urls).onDisappear { ExportService.remove(item) }
+            }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .data],
                           allowsMultipleSelection: false) { result in
                 importWhoop(result)
