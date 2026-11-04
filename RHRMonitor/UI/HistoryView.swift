@@ -113,7 +113,7 @@ struct SessionDetailView: View {
         .navigationTitle(session.map { Format.dateTime.string(from: $0.startedAt) } ?? "Session")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: model.dataVersion) { await load() }
-        .sheet(item: $share) { item in ShareSheet(items: item.urls) }
+        .sheet(item: $share, onDismiss: ExportService.cleanUp) { item in ShareSheet(items: item.urls) }
         .confirmationDialog("Delete this session and its samples?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 try? model.database.deleteSession(id: sessionID)

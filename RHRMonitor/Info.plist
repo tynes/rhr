@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID is used only if you turn on the app lock in Settings, to keep others from seeing your heart rate data.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>RHR Monitor connects to your WHOOP (or another heart rate sensor) to read your live heart rate. Readings stay on this iPhone.</string>
 	<key>UIApplicationSceneManifest</key>

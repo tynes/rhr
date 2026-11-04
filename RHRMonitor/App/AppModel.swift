@@ -46,6 +46,8 @@ final class AppModel {
                                        savedDeviceName: settings.selectedDeviceName,
                                        autoReconnect: settings.autoReconnect)
         wire()
+        // Export files are only needed while the share sheet is open; remove any left by a previous run.
+        ExportService.cleanUp()
         recoverOpenSessions(now: Date())
         if settings.simulatedHeartRate { mock.start() }
     }
@@ -165,6 +167,8 @@ final class AppModel {
         if resting.isRunning { resting.discard() }
         if recorder.isRecording { recorder.stopRecording(status: .interrupted) }
         try database.deleteAllData()
+        settings.clearPendingPostures()
+        ExportService.cleanUp()
         dataChanged()
     }
 }

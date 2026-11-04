@@ -11,6 +11,26 @@ final class ExportTests: XCTestCase {
         XCTAssertEqual(CSVExporter.escape("line\nbreak"), "\"line\nbreak\"")
     }
 
+    func testFormulaInjectionIsNeutralized() {
+        for evil in ["=HYPERLINK(\"http://x\",\"hi\")", "+1+1", "-2+3", "@SUM(A1)", "\tcmd", "\rcmd"] {
+            XCTAssertEqual(CSVExporter.text(evil), "'" + evil)
+        }
+        XCTAssertEqual(CSVExporter.text("WHOOP MG"), "WHOOP MG")
+        XCTAssertEqual(CSVExporter.text(""), "")
+        XCTAssertEqual(CSVExporter.text("a=b"), "a=b")
+
+        // Device names (set by whoever is broadcasting) and notes are protected in every export.
+        let s = RecordingSession(id: "x", startedAt: t0, deviceIdentifier: "id", deviceName: "=cmd|' /C calc'!A0",
+                                 notes: "@evil")
+        let rows = CSVReader.parse(CSVExporter.sessionsCSV([s]))
+        XCTAssertEqual(rows[1][8], "'=cmd|' /C calc'!A0")
+        XCTAssertEqual(rows[1][9], "'@evil")
+        let sample = HeartRateSample(sessionID: "x", timestamp: t0, bpm: 60, sourceDevice: "-WHOOP")
+        XCTAssertEqual(CSVReader.parse(CSVExporter.samplesCSV([sample]))[1][6], "'-WHOOP")
+        let a = Annotation(day: CalendarDay(year: 2026, month: 1, day: 1), createdAt: t0, kind: .note, text: "=1+1")
+        XCTAssertEqual(CSVReader.parse(CSVExporter.annotationsCSV([a]))[1][4], "'=1+1")
+    }
+
     func testSamplesCSVRoundTrip() {
         let samples = [
             HeartRateSample(sessionID: "s1", timestamp: t0, bpm: 61, rrIntervalsMs: [976.5625, 1000], sensorContact: .detected, sourceDevice: "WHOOP, MG"),
@@ -89,6 +109,47 @@ final class ExportTests: XCTestCase {
         let r = try WhoopCSVImporter.parse("Cycle start time,Resting heart rate (bpm)\n2026-10-01 07:00:00,55\n")
         XCTAssertEqual(r.values.first?.day.string, "2026-10-01")
         XCTAssertThrowsError(try WhoopCSVImporter.parse("date,value\n2026-10-01,55\n"))
+    }
+
+    func testWhoopImportRejectsImplausibleValuesAndDates() throws {
+        let now = Date(timeIntervalSince1970: 1_793_000_000) // 2026-10-26
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let csv = """
+        Cycle start time,Resting heart rate (bpm)
+        2026-10-01 07:00:00,55
+        2026-10-02 07:00:00,inf
+        2026-10-03 07:00:00,nan
+        2026-10-04 07:00:00,9999
+        2026-10-05 07:00:00,10
+        0001-01-01 07:00:00,55
+        1999-12-31 07:00:00,55
+        2099-01-01 07:00:00,55
+        2026-10-27 07:00:00,56
+        """
+        let r = try WhoopCSVImporter.parse(csv, importedAt: now, calendar: cal)
+        XCTAssertEqual(r.values.map(\.day.string), ["2026-10-01", "2026-10-27"])
+        XCTAssertEqual(r.skippedRows, 7)
+        XCTAssertTrue(r.values.allSatisfy { $0.bpm.isFinite && (25...250).contains($0.bpm) })
+    }
+
+    func testWhoopImportRejectsHugeFile() {
+        let header = "Cycle start time,Resting heart rate (bpm)\n"
+        let big = header + String(repeating: "x", count: WhoopCSVImporter.maxFileBytes)
+        XCTAssertThrowsError(try WhoopCSVImporter.parse(big)) { error in
+            XCTAssertEqual(error as? WhoopCSVImporter.ImportError, .fileTooLarge)
+        }
+    }
+
+    func testDeviceNameSanitizing() {
+        XCTAssertEqual(DeviceName.sanitize("WHOOP 4C1234567"), "WHOOP 4C1234567")
+        XCTAssertNil(DeviceName.sanitize(nil))
+        XCTAssertNil(DeviceName.sanitize("  \n\t "))
+        XCTAssertNil(DeviceName.sanitize("\u{200B}\u{202E}"))
+        // Newlines, bidi overrides (which can make text display reversed) and zero-width characters go.
+        XCTAssertEqual(DeviceName.sanitize("WHO\u{202E}OP\n\u{200B}MG"), "WHOOPMG")
+        XCTAssertEqual(DeviceName.sanitize(String(repeating: "A", count: 500))?.count, DeviceName.maxLength)
+        XCTAssertEqual(DeviceName.sanitize("Polar H10 ❤️"), "Polar H10 ❤️")
     }
 
     func testMockGeneratorIsDeterministicAndPlausible() {

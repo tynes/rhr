@@ -69,6 +69,8 @@ final class HeartRateBLEManager: NSObject {
                                 CBUUID(string: "61080001-8D6D-82B8-614A-1C8CB0F8DCC6")]
     static let restoreIdentifier = "rhrmonitor.ble.central"
     static let scanDuration: TimeInterval = 30
+    /// Upper bound on listed devices, so a flood of fake advertisements can't grow the list forever.
+    static let maxDiscovered = 50
 
     private(set) var machine = ConnectionMachine()
     private(set) var discovered: [DiscoveredDevice] = []
@@ -100,7 +102,7 @@ final class HeartRateBLEManager: NSObject {
 
     init(savedDeviceID: UUID?, savedDeviceName: String?, autoReconnect: Bool) {
         self.deviceID = savedDeviceID
-        self.deviceName = savedDeviceName
+        self.deviceName = DeviceName.sanitize(savedDeviceName)
         self.autoReconnect = autoReconnect
         super.init()
         // Only create the central (which triggers the permission prompt) if permission was
@@ -194,7 +196,7 @@ final class HeartRateBLEManager: NSObject {
         p.delegate = self
         knownPeripherals[p.identifier] = p
         deviceID = p.identifier
-        deviceName = (name?.isEmpty == false ? name : nil) ?? p.name ?? "Heart rate sensor"
+        deviceName = DeviceName.sanitize(name) ?? DeviceName.sanitize(p.name) ?? "Heart rate sensor"
         onDeviceSelected?(p.identifier, deviceName)
     }
 
@@ -229,10 +231,12 @@ final class HeartRateBLEManager: NSObject {
     private func beginScan() {
         guard let central, central.state == .poweredOn else { return }
         discovered.removeAll()
+        // Drop peripherals seen in earlier scans; keep only the selected one.
+        knownPeripherals = peripheral.map { [$0.identifier: $0] } ?? [:]
         // A strap connected to this iPhone (e.g. by the WHOOP app) does not advertise; list it too.
         for p in central.retrieveConnectedPeripherals(withServices: [Self.heartRateService] + Self.whoopServices) {
             knownPeripherals[p.identifier] = p
-            let name = p.name ?? "Connected device"
+            let name = DeviceName.sanitize(p.name) ?? "Connected device"
             upsert(DiscoveredDevice(id: p.identifier, name: name, rssi: nil, advertisesHeartRate: false,
                                     looksLikeWhoop: name.uppercased().contains("WHOOP"), connectedToSystem: true))
         }
@@ -328,8 +332,10 @@ extension HeartRateBLEManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        // Only re-adopt the device the user selected. Anything else (e.g. a device the user has
+        // since forgotten) is left alone rather than silently reconnected.
         guard let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral],
-              let p = peripherals.first(where: { $0.identifier == deviceID }) ?? peripherals.first else { return }
+              let deviceID, let p = peripherals.first(where: { $0.identifier == deviceID }) else { return }
         select(p, name: deviceName ?? p.name)
         restoredPending = true
         addLog("iOS restored the Bluetooth session")
@@ -339,10 +345,12 @@ extension HeartRateBLEManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let services = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
-        let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? ""
+        // Advertised names are set by whoever is broadcasting: clean them before use.
+        let name = DeviceName.sanitize((advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name) ?? ""
         let hr = services.contains(Self.heartRateService)
         let whoop = name.uppercased().contains("WHOOP") || services.contains(where: { Self.whoopServices.contains($0) })
         guard hr || whoop else { return }
+        guard discovered.count < Self.maxDiscovered || discovered.contains(where: { $0.id == peripheral.identifier }) else { return }
         knownPeripherals[peripheral.identifier] = peripheral
         let rssi = RSSI.intValue == 127 ? nil : RSSI.intValue
         upsert(DiscoveredDevice(id: peripheral.identifier, name: name.isEmpty ? "Heart rate sensor" : name, rssi: rssi,

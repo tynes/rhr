@@ -8,6 +8,7 @@ import HeartRateStore
 /// Screen D — device, diagnostics, data export/import/deletion, privacy and about.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppLock.self) private var appLock
 
     @State private var counts: AppDatabase.Counts?
     @State private var share: ShareItem?
@@ -61,9 +62,18 @@ struct SettingsView: View {
                     Text("Generates fake heart rate to try the app without a strap. Recordings made this way are labeled \"Simulated\". Turn this off to use your WHOOP.")
                 }
 
-                Section("Privacy") {
-                    Text("All data stays on this iPhone in a local database protected by iOS Data Protection. There is no account, no server, no analytics and no tracking. Data leaves the phone only when you export and share it yourself.")
+                Section {
+                    Toggle("Require \(AppLock.methodName) to open", isOn: Binding(
+                        get: { appLock.isEnabled },
+                        set: { on in Task { await appLock.setEnabled(on) } }))
+                        .disabled(appLock.isAuthenticating)
+                    if let e = appLock.lastError { Text(e).font(.footnote).foregroundStyle(.orange) }
+                    Text("All data stays on this iPhone in a local database protected by iOS Data Protection. There is no account, no server, no analytics and no tracking, and the app never connects to the internet. Data leaves the phone only when you export and share it yourself; export files are deleted when the share sheet closes.")
                         .font(.footnote)
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text("The lock only hides the screens. Bluetooth collection and recording keep running while the app is locked. Your heart rate is always hidden in the app switcher.")
                 }
 
                 Section("About") {
@@ -76,7 +86,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .task(id: model.dataVersion) { counts = try? model.database.counts() }
-            .sheet(item: $share) { item in ShareSheet(items: item.urls) }
+            .sheet(item: $share, onDismiss: ExportService.cleanUp) { item in ShareSheet(items: item.urls) }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .data],
                           allowsMultipleSelection: false) { result in
                 importWhoop(result)
@@ -199,12 +209,17 @@ struct SettingsView: View {
             guard let url = try result.get().first else { return }
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            // Refuse oversized files before reading them into memory.
+            if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > WhoopCSVImporter.maxFileBytes {
+                throw WhoopCSVImporter.ImportError.fileTooLarge
+            }
             let text = try String(contentsOf: url, encoding: .utf8)
             let parsed = try WhoopCSVImporter.parse(text)
             try model.database.upsertImported(parsed.values)
             model.dataChanged()
-            let range = parsed.values.isEmpty ? "" : " from \(parsed.values.first!.day) to \(parsed.values.last!.day)"
-            message = "Imported \(parsed.values.count) days of WHOOP overnight resting heart rate\(range) (dated by \(parsed.dateColumn)). Skipped \(parsed.skippedRows) rows without a value."
+            var range = ""
+            if let first = parsed.values.first, let last = parsed.values.last { range = " from \(first.day) to \(last.day)" }
+            message = "Imported \(parsed.values.count) days of WHOOP overnight resting heart rate\(range) (dated by \(parsed.dateColumn)). Skipped \(parsed.skippedRows) rows without a usable value."
         } catch {
             message = "Import failed: \(error.localizedDescription)"
         }
@@ -213,7 +228,6 @@ struct SettingsView: View {
     private func deleteAll() {
         do {
             try model.deleteAllData()
-            ExportService.cleanUp()
             message = "All data was deleted."
         } catch {
             message = "Delete failed: \(error.localizedDescription)"

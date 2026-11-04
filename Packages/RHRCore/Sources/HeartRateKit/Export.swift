@@ -17,6 +17,17 @@ public enum CSVExporter {
         return field
     }
 
+    /// Characters that make Excel, Numbers or Google Sheets treat a cell as a formula.
+    static let formulaTriggers: Set<Character> = ["=", "+", "-", "@", "\t", "\r"]
+
+    /// For free text that may come from outside the app (notes, Bluetooth device names): a cell
+    /// starting with a formula character gets a leading `'`, so a spreadsheet shows it as text
+    /// instead of running it (CSV/formula injection). Numbers and timestamps never need this.
+    public static func text(_ field: String) -> String {
+        guard let first = field.first, formulaTriggers.contains(first) else { return field }
+        return "'" + field
+    }
+
     static func row(_ fields: [String]) -> String { fields.map(escape).joined(separator: ",") }
 
     static func number(_ d: Double?) -> String {
@@ -38,7 +49,7 @@ public enum CSVExporter {
         for s in samples {
             lines.append(row([s.sessionID, ISOTimestamp.format(milliseconds: s.timestampMs), String(s.timestampMs),
                               String(s.bpm), s.rrIntervalsMs.map { "\($0)" }.joined(separator: ";"),
-                              s.sensorContact.rawValue, s.sourceDevice]))
+                              s.sensorContact.rawValue, text(s.sourceDevice)]))
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -52,7 +63,7 @@ public enum CSVExporter {
             lines.append(row([s.id, s.kind.rawValue, s.status.rawValue, ISOTimestamp.format(s.startedAt),
                               s.endedAt.map(ISOTimestamp.format) ?? "",
                               s.endedAt.map { String(Int($0.timeIntervalSince(s.startedAt).rounded())) } ?? "",
-                              String(s.sampleCount), s.deviceIdentifier ?? "", s.deviceName ?? "", s.notes]))
+                              String(s.sampleCount), text(s.deviceIdentifier ?? ""), text(s.deviceName ?? ""), text(s.notes)]))
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -71,7 +82,7 @@ public enum CSVExporter {
                               r.minBPM.map(String.init) ?? "", r.maxBPM.map(String.init) ?? "", fixed(r.sdBPM),
                               String(r.sampleCount), fixed(r.coverage, 3), fixed(r.largestGapSeconds, 1),
                               r.flags.map(\.rawValue).joined(separator: ";"), String(Int(m.settings.settleSeconds)),
-                              String(Int(m.settings.windowSeconds)), m.notes]))
+                              String(Int(m.settings.windowSeconds)), text(m.notes)]))
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -79,7 +90,7 @@ public enum CSVExporter {
     public static func annotationsCSV(_ items: [Annotation]) -> String {
         var lines = [row(["annotation_id", "day", "kind", "value", "text", "session_id", "created_at_utc"])]
         for a in items {
-            lines.append(row([a.id, a.day.string, a.kind.rawValue, number(a.value), a.text, a.sessionID ?? "",
+            lines.append(row([a.id, a.day.string, a.kind.rawValue, number(a.value), text(a.text), a.sessionID ?? "",
                               ISOTimestamp.format(a.createdAt)]))
         }
         return lines.joined(separator: "\n") + "\n"
@@ -180,8 +191,17 @@ public enum CSVReader {
 ///
 /// Columns are matched by name, case-insensitively: a "resting heart rate" column, and a date
 /// column — "Wake onset" if present (the morning the value belongs to), else "Cycle start time".
-/// Rows with an empty or non-numeric RHR are skipped.
+/// Rows with an empty, non-numeric or implausible RHR, or an implausible date, are skipped.
+///
+/// The file comes from outside the app, so values are bounded: BPM must be within
+/// `HeartRateMeasurementParser.plausibleRange` and dates between 2000-01-01 and one day after
+/// the import. That keeps a damaged or hostile file from storing absurd values (e.g. `inf`, or
+/// year 0001, which would make the "All time" trend chart walk hundreds of thousands of days).
 public enum WhoopCSVImporter {
+    /// Larger files are refused before reading. A WHOOP export covers years in well under 1 MB.
+    public static let maxFileBytes = 10 * 1024 * 1024
+    public static let earliestDay = CalendarDay(year: 2000, month: 1, day: 1)
+
     public struct Result: Equatable, Sendable {
         public var values: [ImportedRestingHR]
         public var skippedRows: Int
@@ -190,12 +210,20 @@ public enum WhoopCSVImporter {
 
     public enum ImportError: Error, Equatable, LocalizedError {
         case missingColumns
+        case fileTooLarge
         public var errorDescription: String? {
-            "This doesn't look like WHOOP's physiological_cycles.csv (no resting heart rate column found)."
+            switch self {
+            case .missingColumns:
+                return "This doesn't look like WHOOP's physiological_cycles.csv (no resting heart rate column found)."
+            case .fileTooLarge:
+                return "This file is too large to be a WHOOP physiological_cycles.csv export."
+            }
         }
     }
 
-    public static func parse(_ text: String, importedAt: Date = Date()) throws -> Result {
+    public static func parse(_ text: String, importedAt: Date = Date(), calendar: Calendar = .current) throws -> Result {
+        guard text.utf8.count <= maxFileBytes else { throw ImportError.fileTooLarge }
+        let latestDay = CalendarDay(importedAt, calendar: calendar).adding(days: 1)
         let rows = CSVReader.parse(text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text)
         guard let header = rows.first?.map({ $0.trimmingCharacters(in: .whitespaces).lowercased() }) else {
             throw ImportError.missingColumns
@@ -211,8 +239,9 @@ public enum WhoopCSVImporter {
         var skipped = 0
         for r in rows.dropFirst() {
             guard r.count > max(rhrIndex, dateIndex),
-                  let bpm = Double(r[rhrIndex].trimmingCharacters(in: .whitespaces)), bpm > 0,
-                  let day = CalendarDay(string: r[dateIndex]) else {
+                  let bpm = Double(r[rhrIndex].trimmingCharacters(in: .whitespaces)), bpm.isFinite,
+                  Double(HeartRateMeasurementParser.plausibleRange.lowerBound)...Double(HeartRateMeasurementParser.plausibleRange.upperBound) ~= bpm,
+                  let day = CalendarDay(string: r[dateIndex]), day >= earliestDay, day <= latestDay else {
                 if !(r.count == 1 && r[0].isEmpty) { skipped += 1 }
                 continue
             }

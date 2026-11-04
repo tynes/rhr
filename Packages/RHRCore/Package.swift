@@ -9,7 +9,10 @@ let package = Package(
         .library(name: "HeartRateStore", targets: ["HeartRateStore"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        // Pinned to an exact release (Package.resolved records its commit hash). 7.9+ needs Swift tools
+        // 6.1 (Xcode 16.3+); 7.8.0 builds with every toolchain the README supports. Update
+        // deliberately, not automatically: this is the only third-party code in the app.
+        .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.8.0"),
     ],
     targets: [
         // Pure logic: BLE packet parsing, recording, analytics, export. No UIKit / CoreBluetooth.

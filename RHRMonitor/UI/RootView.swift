@@ -5,10 +5,12 @@ enum AppTab: Hashable {
     case live, resting, trends, history, settings
 }
 
-/// Tab shell. Also reports this scene's keep-awake needs and app lifecycle to the model.
+/// Tab shell. Also reports this scene's keep-awake needs and app lifecycle to the model, and
+/// covers the content when the app isn't active or the optional app lock is engaged.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(KeepAwakeController.self) private var keepAwake
+    @Environment(AppLock.self) private var appLock
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var tab: AppTab = .live
@@ -45,11 +47,24 @@ struct RootView: View {
         .onChange(of: wantsAwake) { _, newValue in
             keepAwake.update(scene: sceneID, wantsAwake: newValue)
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
-            case .background: model.appDidEnterBackground()
-            case .active: model.appWillEnterForeground()
+            case .background:
+                model.appDidEnterBackground()
+                appLock.lockIfEnabled()
+            case .active:
+                model.appWillEnterForeground()
+                Task { await appLock.promptIfNeeded() }
             default: break
+            }
+        }
+        .overlay {
+            // Hides heart rate data from the app switcher snapshot, and from view while locked.
+            if appLock.isLocked || scenePhase != .active {
+                PrivacyCover(locked: appLock.isLocked, isAuthenticating: appLock.isAuthenticating,
+                             error: appLock.lastError) {
+                    Task { await appLock.unlock() }
+                }
             }
         }
     }

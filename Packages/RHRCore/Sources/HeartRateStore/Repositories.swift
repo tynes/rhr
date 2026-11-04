@@ -250,7 +250,8 @@ extension AppDatabase {
         }
     }
 
-    /// Deletes every row in every table.
+    /// Deletes every row in every table, then rebuilds the file and empties the write-ahead log
+    /// so no copy of the deleted rows is left on disk.
     public func deleteAllData() throws {
         try writer.write { db in
             for table in ["connection_event", "annotation", "imported_rhr", "resting_measurement", "heart_rate_sample", "recording_session"] {
@@ -258,6 +259,14 @@ extension AppDatabase {
             }
         }
         try writer.vacuum()
+        if writer is DatabasePool {
+            try writer.writeWithoutTransaction { db in _ = try db.checkpoint(.truncate) }
+        }
+    }
+
+    /// Whether SQLite secure delete is on for this connection (for tests).
+    public func secureDeleteEnabled() throws -> Bool {
+        try writer.read { db in try Int.fetchOne(db, sql: "PRAGMA secure_delete") == 1 }
     }
 
     public struct Counts: Equatable, Sendable {

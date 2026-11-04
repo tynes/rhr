@@ -11,6 +11,9 @@
   missing.
 - **Units:** heart rate in beats per minute; RR intervals in milliseconds (sensor resolution 1/1024 s,
   so values like `976.5625` are exact), `;`-separated in one CSV field; coverage as a 0–1 fraction.
+- **Free text** (notes, annotation text, device names and identifiers): a value starting with `=`, `+`, `-`,
+  `@`, tab or carriage return is written with a leading `'`, so Excel, Numbers and Google Sheets show it as
+  text instead of evaluating it as a formula. Strip that `'` if you parse these columns yourself.
 
 ## Files
 

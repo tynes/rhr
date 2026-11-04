@@ -17,7 +17,7 @@ over time against the things you do (caffeine, alcohol, sleep, exercise, stress�
 
 | Area | State |
 |---|---|
-| Core logic (BLE packet parsing, recording, gap detection, resting-HR math, trends, correlations, CSV/JSON export, WHOOP CSV import) | Implemented, **76 automated tests passing** on Linux (Swift 6.0.3) |
+| Core logic (BLE packet parsing, recording, gap detection, resting-HR math, trends, correlations, CSV/JSON export, WHOOP CSV import) | Implemented, **82 automated tests passing** on Linux (Swift 6.0.3) |
 | iOS app (SwiftUI, CoreBluetooth, Swift Charts, GRDB) | Implemented and code-reviewed, but **not yet compiled by Xcode**: it was written on Linux, and the macOS CI job (`.github/workflows/ci.yml`) couldn't run because GitHub Actions didn't start any runners for this repository. Expect to possibly fix small compile errors on first build |
 | **Real WHOOP MG hardware** | **Not yet tested.** See [docs/HARDWARE_TESTING.md](docs/HARDWARE_TESTING.md) for the checklist to run on your phone |
 
@@ -62,7 +62,8 @@ as CSV, everything as JSON) via the iOS share sheet, WHOOP CSV import, delete al
 You need a Mac with **Xcode 16 or newer**, an iPhone on **iOS 17 or newer**, and an Apple ID (a free one works).
 
 1. Clone the repo and open `RHRMonitor.xcodeproj` in Xcode. Xcode resolves the one dependency
-   (GRDB.swift) automatically — wait for "Resolving packages" to finish.
+   (GRDB.swift, pinned to exactly 7.8.0 by commit hash in `Package.resolved`) — wait for "Resolving packages"
+   to finish.
 2. Select the **RHRMonitor** project in the navigator → target **RHRMonitor** → **Signing & Capabilities**:
    - **Team:** choose your Apple ID (Xcode › Settings › Accounts to add one).
    - **Bundle Identifier:** change `com.example.rhrmonitor` to something unique, e.g. `com.yourname.rhrmonitor`.
@@ -76,6 +77,20 @@ You need a Mac with **Xcode 16 or newer**, an iPhone on **iOS 17 or newer**, and
    just run again from Xcode. A paid developer account lasts a year and allows TestFlight.
 
 The iOS Simulator has no Bluetooth; use **Settings › Testing › Simulated heart rate** there.
+
+### What you're installing (and how to keep the risk low)
+
+- **Permissions:** Bluetooth only (asked the first time you tap *Find device*). Face ID only if you turn on the
+  app lock. No location, contacts, photos, camera, microphone, notifications or Health access.
+- **No network code.** The app never connects to the internet; the only data leaving the phone is an export
+  you share yourself. Your own Apple ID signs the build, so nothing is installed from a third party.
+- **Dependencies:** one open-source library (GRDB.swift, MIT), pinned to an exact version and commit hash.
+  On iPhone it uses Apple's built-in SQLite.
+- **Optional:** for daily use, build in Release (*Product › Scheme › Edit Scheme › Run › Build Configuration ›
+  Release*). Debug builds let a paired Mac attach a debugger, which you don't need for testing.
+- **To remove everything:** delete the app. iOS deletes its database, settings and any export files with it.
+  *Settings › Data › Delete all data* does the same without uninstalling.
+- Full audit notes: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Connect your WHOOP
 
@@ -130,7 +145,7 @@ Packages/RHRCore/                 Swift package — no UIKit/CoreBluetooth, buil
                                   GapDetector, ChartDownsampler, RestingHRCalculator, TrendCalculator,
                                   CorrelationAnalyzer, CSV/JSON export, WHOOP CSV import, mock generator
   Sources/HeartRateStore/         GRDB schema, migrations, repositories
-  Tests/                          76 XCTest cases
+  Tests/                          82 XCTest cases
 RHRMonitor/                       iOS app (SwiftUI)
   App/          AppDelegate + AppModel (composition root, session recovery), settings
   Bluetooth/    HeartRateBLEManager
@@ -167,10 +182,17 @@ Not covered by automated tests: anything needing a real phone or strap — see t
 
 - Database: `Application Support/RHRMonitor/rhr.sqlite`, file protection
   *complete until first unlock* (encrypted while the phone is locked after a restart, but writable by
-  background Bluetooth collection while locked).
-- No analytics, telemetry or third-party SDKs. The only dependency is GRDB.swift (MIT).
-- Export formats, units and time-zone rules: [docs/DATA_FORMAT.md](docs/DATA_FORMAT.md).
-- Settings › Data › Delete all data removes everything (and vacuums the database).
+  background Bluetooth collection while locked). Like other app data it is included in your iPhone backups
+  (encrypted iCloud backups, or encrypted Finder backups if you enable that).
+- No analytics, telemetry or third-party SDKs, and no network code. The only dependency is GRDB.swift (MIT).
+- **Optional app lock** (*Settings › Privacy*): requires Face ID / Touch ID / passcode to open the app. It hides
+  the screens only; collection keeps running. Heart rate is always hidden in the app switcher.
+- Export formats, units and time-zone rules: [docs/DATA_FORMAT.md](docs/DATA_FORMAT.md). Export files are
+  written encrypted to a temporary folder and deleted when the share sheet closes (and at next launch).
+  Free-text fields that start with `=`, `+`, `-` or `@` are prefixed with `'` so spreadsheets don't run them
+  as formulas.
+- Settings › Data › Delete all data removes everything: rows are overwritten (SQLite `secure_delete`), the
+  file is vacuumed and the write-ahead log truncated, so deleted readings and notes don't linger on disk.
 
 ## Design decisions
 
