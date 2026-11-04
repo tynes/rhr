@@ -17,6 +17,7 @@ enum LiveRange: String, CaseIterable, Identifiable {
 /// Screen A — live monitor.
 struct LiveMonitorView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppLock.self) private var appLock
     @Environment(KeepAwakeController.self) private var keepAwake
     @Binding var tab: AppTab
 
@@ -69,6 +70,8 @@ struct LiveMonitorView: View {
                 }
             }
         }
+        // The privacy cover can't sit above sheets and dialogs, so close them when the app locks.
+        .onChange(of: appLock.isLocked) { _, locked in if locked { confirmStop = false } }
         .confirmationDialog("Stop recording?", isPresented: $confirmStop, titleVisibility: .visible) {
             Button("Stop Recording", role: .destructive) { model.stopRecording() }
         } message: {

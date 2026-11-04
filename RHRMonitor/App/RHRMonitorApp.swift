@@ -8,6 +8,7 @@ import UIKit
 final class AppDelegate: NSObject, UIApplicationDelegate {
     let model = AppModel()
     let keepAwake = KeepAwakeController()
+    let appLock = AppLock()
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -29,6 +30,7 @@ struct RHRMonitorApp: App {
             RootView()
                 .environment(appDelegate.model)
                 .environment(appDelegate.keepAwake)
+                .environment(appDelegate.appLock)
                 .tint(.red)
         }
     }

@@ -137,4 +137,30 @@ final class StoreTests: XCTestCase {
         try db.deleteAllData()
         XCTAssertEqual(try db.counts(), AppDatabase.Counts(sessions: 0, samples: 0, restingMeasurements: 0, annotations: 0, imported: 0))
     }
+
+    func testSecureDeleteIsOn() throws {
+        XCTAssertTrue(try db.secureDeleteEnabled())
+    }
+
+    /// After "Delete all data", deleted text must not be recoverable from the database file or its WAL.
+    func testDeleteAllLeavesNoTraceOnDisk() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("rhr.sqlite")
+        let marker = "SECRET-NOTE-\(UUID().uuidString)"
+        do {
+            let disk = try AppDatabase.openOnDisk(at: url)
+            XCTAssertTrue(try disk.secureDeleteEnabled())
+            try disk.insertSession(RecordingSession(id: "s1", startedAt: t0, notes: marker))
+            try disk.persist((0..<50).map { sample($0) }, sessionID: "s1")
+            try disk.saveAnnotation(Annotation(day: CalendarDay(year: 2026, month: 1, day: 1), kind: .note, text: marker))
+            try disk.deleteAllData()
+            XCTAssertEqual(try disk.counts().sessions, 0)
+            let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            for file in files {
+                let bytes = try Data(contentsOf: file)
+                XCTAssertNil(bytes.range(of: Data(marker.utf8)), "deleted text still present in \(file.lastPathComponent)")
+            }
+        }
+    }
 }

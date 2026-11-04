@@ -4,5 +4,4 @@
 DerivedData/
 xcuserdata/
 *.xcuserstate
-Packages/RHRCore/Package.resolved
 build.log

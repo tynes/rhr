@@ -10,7 +10,9 @@ struct ShareItem: Identifiable {
 }
 
 /// Writes export files to a private temporary folder for the share sheet.
-/// Data only leaves the device if the user picks a destination in the share sheet.
+/// Data only leaves the device if the user picks a destination in the share sheet. The files
+/// are encrypted while the phone is locked and deleted when the share sheet closes, at the next
+/// launch, and by "Delete all data", so copies of health data don't pile up in the app's storage.
 enum ExportService {
     enum Kind: String, CaseIterable, Identifiable {
         case samples = "Heart rate samples (CSV)"
@@ -31,7 +33,9 @@ enum ExportService {
 
     static func write(_ data: Data, name: String) throws -> URL {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appendingPathComponent(name)
+        // Names are built by this file from fixed prefixes, UUID prefixes and timestamps; never let
+        // one escape the export folder.
+        let url = folder.appendingPathComponent((name as NSString).lastPathComponent)
         try data.write(to: url, options: [.atomic, .completeFileProtection])
         return url
     }
@@ -62,6 +66,12 @@ enum ExportService {
         return ShareItem(urls: [url])
     }
 
+    /// Deletes one export's files. Called when its share sheet closes.
+    static func remove(_ item: ShareItem) {
+        for url in item.urls { try? FileManager.default.removeItem(at: url) }
+    }
+
+    /// Deletes every export file. Called at launch and by "Delete all data".
     static func cleanUp() {
         try? FileManager.default.removeItem(at: folder)
     }

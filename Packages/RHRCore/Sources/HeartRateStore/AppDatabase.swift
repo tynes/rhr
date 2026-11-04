@@ -28,8 +28,7 @@ public final class AppDatabase: @unchecked Sendable {
         try? fm.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
                               ofItemAtPath: dir.path)
         #endif
-        var config = Configuration()
-        config.foreignKeysEnabled = true
+        var config = Self.baseConfiguration()
         config.busyMode = .timeout(5)
         let pool = try DatabasePool(path: url.path, configuration: config)
         #if os(iOS)
@@ -41,9 +40,18 @@ public final class AppDatabase: @unchecked Sendable {
 
     /// In-memory database for tests and previews.
     public static func inMemory() throws -> AppDatabase {
+        try AppDatabase(DatabaseQueue(configuration: baseConfiguration()))
+    }
+
+    static func baseConfiguration() -> Configuration {
         var config = Configuration()
         config.foreignKeysEnabled = true
-        return try AppDatabase(DatabaseQueue(configuration: config))
+        config.prepareDatabase { db in
+            // Overwrite deleted rows with zeros instead of leaving them readable in free pages,
+            // so deleted health data can't be recovered from the database file.
+            try db.execute(sql: "PRAGMA secure_delete = ON")
+        }
+        return config
     }
 
     static var migrator: DatabaseMigrator {

@@ -5,6 +5,7 @@ import HeartRateStore
 /// Screen B — standardized five-minute resting heart rate measurement.
 struct RestingHRView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppLock.self) private var appLock
     @Environment(KeepAwakeController.self) private var keepAwake
 
     @State private var posture: Posture = .sitting
@@ -56,6 +57,8 @@ struct RestingHRView: View {
             }
             .navigationTitle("Resting HR")
             .task(id: model.dataVersion) { reload() }
+            // The privacy cover can't sit above sheets and dialogs, so close them when the app locks.
+            .onChange(of: appLock.isLocked) { _, locked in if locked { confirmDiscard = false } }
             .confirmationDialog("Discard this measurement?", isPresented: $confirmDiscard, titleVisibility: .visible) {
                 Button("Discard", role: .destructive) { model.resting.discard() }
             }

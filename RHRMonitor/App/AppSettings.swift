@@ -40,6 +40,13 @@ final class AppSettings {
         defaults.string(forKey: "pendingPosture.\(sessionID)")
     }
 
+    /// Removes every leftover per-session posture (used by "Delete all data").
+    func clearPendingPostures() {
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("pendingPosture.") {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     private enum Keys {
         static let autoReconnect = "autoReconnect"
         static let deviceID = "selectedDeviceID"

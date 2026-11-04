@@ -7,6 +7,8 @@ SQLITE_DIR="${SQLITE_SNAPSHOT_DIR:-$HOME/.cache/sqlite-snapshot}"
 if [ ! -f "$SQLITE_DIR/libsqlite3.so" ]; then
   mkdir -p "$SQLITE_DIR"
   curl -fsSLo "$SQLITE_DIR/sqlite.zip" https://sqlite.org/2026/sqlite-amalgamation-3530400.zip
+  # Verify the whole download before extracting anything from it.
+  echo "1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d  $SQLITE_DIR/sqlite.zip" | sha256sum --check
   unzip -p "$SQLITE_DIR/sqlite.zip" sqlite-amalgamation-3530400/sqlite3.c > "$SQLITE_DIR/sqlite3.c"
   unzip -p "$SQLITE_DIR/sqlite.zip" sqlite-amalgamation-3530400/sqlite3.h > "$SQLITE_DIR/sqlite3.h"
   echo "b1dd5d74ec7f29055a6684fa06fb3c2f6821c87dd38f9a458dfd2e8a1db28189  $SQLITE_DIR/sqlite3.c" | sha256sum --check
